@@ -273,11 +273,23 @@ int MesurerMouvementFutur(int shiftDepart, double multipleATR, int plafondBarres
       bool toucheHaut = (haut - prixRef >= seuil);
       bool toucheBas  = (prixRef - bas  >= seuil);
 
-      // Bougie ambigue (touche les DEUX seuils) : on ne peut pas savoir
-      // lequel a ete atteint en premier sans donnees intra-barre. La
-      // compter comme "hausse" (ancien comportement, haut teste avant bas)
-      // introduisait un biais haussier systematique -> on l'exclut plutot.
-      if(toucheHaut && toucheBas) return 0;
+      // Bougie ambigue (touche les DEUX seuils) : on lit les ticks intra-barre
+      // pour determiner quel seuil a ete touche en premier (precision accrue).
+      if(toucheHaut && toucheBas)
+      {
+         datetime timeBar = iTime(SymboleCible, PERIOD_M1, shiftCourant);
+         MqlTick ticks[];
+         int count = CopyTicksRange(SymboleCible, ticks, COPY_TICKS_ALL, (ulong)timeBar * 1000, ((ulong)timeBar + 60) * 1000 - 1);
+         if(count > 0)
+         {
+            for(int k = 0; k < count; k++)
+            {
+               if(ticks[k].bid - prixRef >= seuil) return 1;
+               if(prixRef - ticks[k].bid >= seuil) return -1;
+            }
+         }
+         return 0; // Si les ticks ne sont pas disponibles, on exclut pour eviter le biais
+      }
 
       if(toucheHaut) return 1;  // le prix monte de 1 ATR en premier
       if(toucheBas)  return -1; // le prix descend de 1 ATR en premier
