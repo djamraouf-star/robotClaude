@@ -201,7 +201,11 @@ public:
       }
 
       if(ok) m_etat = ETAT_CLOTUREE;
-      else Print("CModuleOrdres : ClorePosition a echoue definitivement ! L'etat reste bloque sur ", EnumToString(m_etat));
+      else 
+      {
+         Print("CModuleOrdres : ClorePosition a echoue definitivement ! Reversion a ETAT_POSITION_OUVERTE pour eviter le blocage.");
+         m_etat = ETAT_POSITION_OUVERTE;
+      }
       return ok;
    }
 

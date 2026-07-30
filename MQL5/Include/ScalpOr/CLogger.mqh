@@ -28,6 +28,7 @@ private:
       {
          m_jourCourant = dt.day_of_year;
          m_pnlJournalier = 0.0;
+         m_pertesConsecutives = 0;
       }
    }
 
