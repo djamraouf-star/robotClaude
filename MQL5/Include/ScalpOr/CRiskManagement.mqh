@@ -115,7 +115,7 @@ public:
    //    de ce plafond (facteur entre 0.5 et 1.0), jamais au-dela.
    //    slDistancePrix = distance du SL en PRIX (ex. atr * multiple), pas
    //    en "points" -- la conversion en risque monetaire par lot se fait
-   //    via la taille et la valeur du tick du symbole.
+   //    via OrderCalcProfit pour garantir la bonne conversion de devise.
    //    NB : formule de ponderation a valider empiriquement, cf. remarque
    //    equivalente sur CIQM.CalculerScore().
    double CalculerTailleLot(double scoreIQM, double capitalDisponible, double slDistancePrix)
@@ -130,16 +130,26 @@ public:
 
       double risqueAjuste = risqueMonetaireBase * facteurConfiance;
 
-      // Perte monetaire pour 1 lot si le SL est touche.
-      // On derive la valeur d'un mouvement de prix de la TAILLE DE CONTRAT
-      // plutot que de SYMBOL_TRADE_TICK_VALUE, qui vaut 0 chez ce broker
-      // (Admirals GOLD) et rendrait tout calcul impossible.
-      // Pour GOLD, contrat = 100 oz : un mouvement de 1.0 en prix sur 1 lot
-      // vaut 100 unites de la devise de cotation (USD).
-      double tailleContrat = SymbolInfoDouble(m_symbole, SYMBOL_TRADE_CONTRACT_SIZE);
-      if(tailleContrat <= 0.0) tailleContrat = 100.0; // securite
+      // Calcul de la perte pour 1 lot via OrderCalcProfit (gestion native devise du compte)
+      double currentPrice = SymbolInfoDouble(m_symbole, SYMBOL_ASK);
+      if(currentPrice <= 0.0) currentPrice = 1000.0; // Securite
+      
+      double profitPerLot = 0.0;
+      bool success = OrderCalcProfit(ORDER_TYPE_BUY, m_symbole, 1.0, currentPrice, currentPrice - slDistancePrix, profitPerLot);
+      
+      double perteParLot = 0.0;
+      if(success && profitPerLot < 0.0)
+      {
+         perteParLot = MathAbs(profitPerLot);
+      }
+      else
+      {
+         // Fallback si OrderCalcProfit echoue
+         double tailleContrat = SymbolInfoDouble(m_symbole, SYMBOL_TRADE_CONTRACT_SIZE);
+         if(tailleContrat <= 0.0) tailleContrat = 100.0; // securite
+         perteParLot = slDistancePrix * tailleContrat;
+      }
 
-      double perteParLot = slDistancePrix * tailleContrat;
       if(perteParLot <= 0.0) return 0.0;
 
       double lot = risqueAjuste / perteParLot;
@@ -160,13 +170,20 @@ public:
       if(volStep <= 0.0) volStep = 0.01; // securite si le broker ne renseigne pas le pas
 
       // Arrondi au pas de volume le plus proche (vers le bas, prudence)
-      lot = MathFloor(lot / volStep) * volStep;
+      // On ajoute 1e-9 pour eviter les erreurs d'arrondi ou MathFloor(0.01/0.01) => 0
+      lot = MathFloor(lot / volStep + 1e-9) * volStep;
 
       if(lot < volMin) return 0.0;      // trop petit -> pas de trade (plutot que forcer volMin)
       if(lot > volMax) lot = volMax;    // plafonne au maximum autorise
 
       // Normalise au nombre de decimales du pas (evite les erreurs d'arrondi flottant)
-      int decimales = (int)MathRound(MathLog10(1.0 / volStep));
+      int decimales = 0;
+      double temp = volStep;
+      while(temp < 1.0 && decimales < 8)
+      {
+         temp *= 10.0;
+         decimales++;
+      }
       return NormalizeDouble(lot, decimales);
    }
 };
