@@ -13,12 +13,35 @@ class CLogger
 {
 private:
    string m_dossier;
-
+   int    m_pertesConsecutives;
+   double m_pnlJournalier;
+   int    m_jourCourant;
+   
    string CheminTrades() const { return m_dossier + "\\trades_log.csv"; }
    string CheminRejets() const { return m_dossier + "\\signaux_rejetes.csv"; }
 
+   void VerifierJour(datetime tCourant)
+   {
+      MqlDateTime dt;
+      TimeToStruct(tCourant, dt);
+      if(dt.day_of_year != m_jourCourant)
+      {
+         m_jourCourant = dt.day_of_year;
+         m_pnlJournalier = 0.0;
+      }
+   }
+
 public:
-   CLogger(string dossier = "ScalpOr") { m_dossier = dossier; }
+   CLogger(string dossier = "ScalpOr") 
+   { 
+      m_dossier = dossier; 
+      m_pertesConsecutives = 0;
+      m_pnlJournalier = 0.0;
+      
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(), dt);
+      m_jourCourant = dt.day_of_year;
+   }
 
    //--- Enregistre une position clôturée. idCalibration identifie la
    //    version de la table de calibration en vigueur au moment du
@@ -26,9 +49,14 @@ public:
    //    pour pouvoir plus tard distinguer une mauvaise strategie d'une
    //    calibration qui a mal vieilli.
    void EnregistrerTrade(datetime idCalibration, datetime tOuverture, datetime tCloture,
-                          double resultatMonetaire, double resultatR,
-                          int regime, int bucketRSI, int bucketADX, int bucketATR, int bucketOBV)
+                         double resultatMonetaire, double resultatR,
+                         int regime, int bucketRSI, int bucketADX, int bucketATR, int bucketOBV)
    {
+      VerifierJour(tCloture);
+      m_pnlJournalier += resultatMonetaire;
+      if(resultatMonetaire < 0.0) m_pertesConsecutives++;
+      else m_pertesConsecutives = 0;
+
       bool existeDeja = FileIsExist(CheminTrades());
       int handle = FileOpen(CheminTrades(), FILE_READ | FILE_WRITE | FILE_CSV | FILE_ANSI, ';');
       if(handle == INVALID_HANDLE) { Print("CLogger : impossible d'ouvrir ", CheminTrades()); return; }
@@ -69,38 +97,10 @@ public:
       FileClose(handle);
    }
 
-   //--- Compte les pertes consecutives les plus recentes (parcourt tout
-   //    le fichier ; a cette echelle de volume ce n'est pas couteux)
+   //--- Compte les pertes consecutives (en memoire)
    int CompterPertesConsecutives()
    {
-      int handle = FileOpen(CheminTrades(), FILE_READ | FILE_CSV | FILE_ANSI, ';');
-      if(handle == INVALID_HANDLE) return 0; // pas encore de trade enregistre
-
-      // En-tete (10 champs)
-      for(int c = 0; c < 10 && !FileIsEnding(handle); c++) FileReadString(handle);
-
-      int streak = 0;
-      while(!FileIsEnding(handle))
-      {
-         FileReadString(handle); // idCalibration
-         FileReadString(handle); // tOuverture
-         FileReadString(handle); // tCloture
-         double resultatMonetaire = StringToDouble(FileReadString(handle));
-         FileReadString(handle); // resultatR
-         FileReadString(handle); // regime
-         FileReadString(handle); // bucketRSI
-         FileReadString(handle); // bucketADX
-         FileReadString(handle); // bucketATR
-         FileReadString(handle); // bucketOBV
-
-         if(FileIsEnding(handle) && resultatMonetaire == 0.0) break; // ligne vide finale
-
-         if(resultatMonetaire < 0.0) streak++;
-         else streak = 0; // un gain reinitialise le compteur
-      }
-
-      FileClose(handle);
-      return streak;
+      return m_pertesConsecutives;
    }
 
    //--- Alerte si la table de calibration n'a pas ete rechargee depuis
@@ -118,39 +118,10 @@ public:
    }
 
    //--- Resultat net cumule (gains ET pertes) depuis un instant donne --
-   //    contrairement a CompterPertesConsecutives(), une serie remise a
-   //    zero par un simple gain ne masque pas ce cumul : "grosse perte,
-   //    petit gain, grosse perte" reste visible ici comme une accumulation
-   //    negative, meme si aucune perte n'est directement consecutive.
+   //    Maintenant gere en memoire pour eviter la lecture de fichier.
    double ObtenirResultatNetCumule(datetime depuis)
    {
-      int handle = FileOpen(CheminTrades(), FILE_READ | FILE_CSV | FILE_ANSI, ';');
-      if(handle == INVALID_HANDLE) return 0.0; // pas encore de trade enregistre
-
-      for(int c = 0; c < 10 && !FileIsEnding(handle); c++) FileReadString(handle); // en-tete
-
-      double cumule = 0.0;
-      while(!FileIsEnding(handle))
-      {
-         FileReadString(handle); // idCalibration
-         FileReadString(handle); // tOuverture
-         string tClotureStr = FileReadString(handle);
-         double resultatMonetaire = StringToDouble(FileReadString(handle));
-         FileReadString(handle); // resultatR
-         FileReadString(handle); // regime
-         FileReadString(handle); // bucketRSI
-         FileReadString(handle); // bucketADX
-         FileReadString(handle); // bucketATR
-         FileReadString(handle); // bucketOBV
-
-         if(FileIsEnding(handle) && tClotureStr == "") break; // ligne vide finale
-
-         datetime tCloture = StringToTime(tClotureStr);
-         if(tCloture >= depuis)
-            cumule += resultatMonetaire;
-      }
-
-      FileClose(handle);
-      return cumule;
+      VerifierJour(TimeCurrent());
+      return m_pnlJournalier;
    }
 };
