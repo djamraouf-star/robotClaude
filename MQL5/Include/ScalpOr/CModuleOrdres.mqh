@@ -137,7 +137,7 @@ public:
          // remodifier a chaque tick -> backtest lent + SL trop serre)
          if(slActuel > 0.0 && nouveauSL - slActuel < pasMin) return;
 
-         m_trade.PositionModify(m_ticketPosition, nouveauSL, tpActuel);
+         ModifierPositionAvecRetry(m_ticketPosition, nouveauSL, tpActuel);
       }
       else // SELL
       {
@@ -146,8 +146,33 @@ public:
          if(nouveauSL - ask < distanceMin) return;
          if(slActuel > 0.0 && slActuel - nouveauSL < pasMin) return;
 
-         m_trade.PositionModify(m_ticketPosition, nouveauSL, tpActuel);
+         ModifierPositionAvecRetry(m_ticketPosition, nouveauSL, tpActuel);
       }
+   }
+
+   //--- Retry pour PositionModify
+   bool ModifierPositionAvecRetry(ulong ticket, double sl, double tp)
+   {
+      bool ok = false;
+      int maxRetries = 3;
+      for(int i = 0; i < maxRetries; i++)
+      {
+         ok = m_trade.PositionModify(ticket, sl, tp);
+         if(ok) break;
+         
+         uint retcode = m_trade.ResultRetcode();
+         Print("CModuleOrdres : echec PositionModify (", i+1, "/", maxRetries, "), code=", retcode);
+         if(retcode == 10004 || retcode == 10009 || retcode == 10015 || retcode == 10016 || retcode == 10025)
+         {
+            Sleep(100);
+         }
+         else
+         {
+            break;
+         }
+      }
+      if(!ok) Print("CModuleOrdres : echec PositionModify pour ticket ", ticket, " code=", m_trade.ResultRetcode(), " echoue definitivement !");
+      return ok;
    }
 
    //--- Transition PositionOuverte/SortieAnticipee -> Cloturee.
@@ -155,9 +180,28 @@ public:
    bool ClorePosition()
    {
       if(m_etat != ETAT_POSITION_OUVERTE && m_etat != ETAT_SORTIE_ANTICIPEE) return false;
+      
+      bool ok = false;
+      int maxRetries = 3;
+      for(int i = 0; i < maxRetries; i++)
+      {
+         ok = m_trade.PositionClose(m_ticketPosition);
+         if(ok) break;
+         
+         uint retcode = m_trade.ResultRetcode();
+         Print("CModuleOrdres : echec PositionClose (", i+1, "/", maxRetries, "), code=", retcode);
+         if(retcode == 10004 || retcode == 10009 || retcode == 10015 || retcode == 10016 || retcode == 10025)
+         {
+            Sleep(100);
+         }
+         else
+         {
+            break;
+         }
+      }
 
-      bool ok = m_trade.PositionClose(m_ticketPosition);
       if(ok) m_etat = ETAT_CLOTUREE;
+      else Print("CModuleOrdres : ClorePosition a echoue definitivement ! L'etat reste bloque sur ", EnumToString(m_etat));
       return ok;
    }
 
