@@ -44,6 +44,13 @@ private:
    int    m_directionPosition; // 1 = achat, -1 = vente, 0 = aucune position
    datetime m_derniereBougieM1; // heure de la derniere bougie M1 traitee (1 execution/bougie)
 
+   // Etats de marche au moment de l'ouverture
+   int    m_regimeOuverture;
+   int    m_bRSIOuverture;
+   int    m_bADXOuverture;
+   int    m_bATROuverture;
+   int    m_bOBVOuverture;
+
    double CalculerExpositionPourcent()
    {
       // TODO : calcul reel de l'exposition engagee. Placeholder simple
@@ -121,24 +128,38 @@ public:
       m_derniereBougieM1 = 0;
    }
 
-   //--- Point d'entree appele a chaque tick par l'EA (OnTick), mais qui ne
-   //    traite qu'UNE FOIS par nouvelle bougie M1 cloturee. Toute la logique
-   //    travaille sur des bougies closes (shift 1), donc reagir a chaque tick
-   //    d'une bougie en cours ne changerait rien au signal et ralentit
-   //    inutilement le backtest (des dizaines de ticks par bougie).
+   //--- Point d'entree appele a chaque tick par l'EA (OnTick).
+   //    La gestion de position et la cloture doivent etre evaluees a chaque
+   //    tick, mais la recherche de nouveaux signaux (ArbitrerSignaux)
+   //    ne s'execute qu'UNE FOIS par nouvelle bougie M1 cloturee.
    void Coordonner()
    {
-      datetime tBougieCourante = iTime(m_symbole, PERIOD_M1, 0);
-      if(tBougieCourante == m_derniereBougieM1) return; // meme bougie -> deja traitee
-      m_derniereBougieM1 = tBougieCourante;
-
       ENUM_ETAT_ORDRE etat = m_ordres.EtatActuel();
 
-      if(etat == ETAT_IDLE)             ArbitrerSignaux();
-      else if(etat == ETAT_POSITION_OUVERTE) GererPositionOuverte();
-      else if(etat == ETAT_CLOTUREE)    FinaliserCloture();
-      // ETAT_SIGNAL_VALIDE et ETAT_SORTIE_ANTICIPEE sont transitoires,
-      // geres en interne par ArbitrerSignaux()/GererPositionOuverte()
+      // Gestion a chaque tick si une position est ouverte (trailing SL, etc.)
+      if(etat == ETAT_POSITION_OUVERTE)
+      {
+         GererPositionOuverte();
+         etat = m_ordres.EtatActuel(); // reactualise l'etat au cas ou il vient de changer
+      }
+
+      // Finalisation immediate des qu'une cloture est detectee
+      if(etat == ETAT_CLOTUREE)
+      {
+         FinaliserCloture();
+         etat = m_ordres.EtatActuel();
+      }
+
+      // Detection de signaux uniquement sur nouvelle bougie (shift 1)
+      datetime tBougieCourante = iTime(m_symbole, PERIOD_M1, 0);
+      if(tBougieCourante != m_derniereBougieM1)
+      {
+         m_derniereBougieM1 = tBougieCourante;
+         if(etat == ETAT_IDLE)
+         {
+            ArbitrerSignaux();
+         }
+      }
    }
 
    //--- Arbre de decision valide : IQM/Filtres (sequence), puis
@@ -198,14 +219,14 @@ public:
       }
 
       //--- Tout est valide : declenchement de l'ordre dans la direction du signal
-      DeclencherOrdre(direction, scoreIQM);
+      DeclencherOrdre(direction, scoreIQM, regime, bRSI, bADX, bATR, bOBV);
    }
 
    //--- Action finale de l'arbre : calcule lot/SL/TP, valide le signal
    //    (transition FSM Idle -> SignalValide), puis ouvre la position.
    //    direction (+1/-1) vient de IQM.SignalDirectionnel, scoreIQM sert
    //    uniquement au sizing (CalculerTailleLot) et n'impose plus le sens.
-   void DeclencherOrdre(int direction, double scoreIQM)
+   void DeclencherOrdre(int direction, double scoreIQM, int regime, int bRSI, int bADX, int bATR, int bOBV)
    {
       double atrCourant = ObtenirATRCourant();
       if(atrCourant <= 0.0) return;
@@ -247,8 +268,19 @@ public:
       // <<< FIN AJOUT
 
       m_ordres.ValiderSignal();
-      if(!m_ordres.OuvrirPosition(type, lot, sl, tp))
+      if(m_ordres.OuvrirPosition(type, lot, sl, tp))
+      {
+         // Mémorise les conditions exactes d'ouverture pour le log à la clôture
+         m_regimeOuverture = regime;
+         m_bRSIOuverture = bRSI;
+         m_bADXOuverture = bADX;
+         m_bATROuverture = bATR;
+         m_bOBVOuverture = bOBV;
+      }
+      else
+      {
          m_directionPosition = 0; // echec d'ouverture, on annule la direction retenue
+      }
    }
 
    //--- Position ouverte : suivi + detection de retournement (les DEUX
@@ -274,9 +306,6 @@ public:
    //    (cf. decision sur CModuleOrdres.Reinitialiser)
    void FinaliserCloture()
    {
-      int regime, bRSI, bADX, bATR, bOBV;
-      m_iqm.ObtenirEtatMarche(regime, bRSI, bADX, bATR, bOBV);
-
       double resultatMonetaire = ObtenirResultatReel(m_ordres.ObtenirTicket());
       // TODO : resultatR (multiple du risque initial) necessiterait de
       // conserver le risque monetaire calcule a l'ouverture (CalculerTailleLot)
@@ -285,7 +314,7 @@ public:
       m_logger.EnregistrerTrade(m_calibration.ObtenirDerniereRecharge(),
                                  m_ordres.ObtenirTempsOuverture(), TimeCurrent(),
                                  resultatMonetaire, 0.0,
-                                 regime, bRSI, bADX, bATR, bOBV);
+                                 m_regimeOuverture, m_bRSIOuverture, m_bADXOuverture, m_bATROuverture, m_bOBVOuverture);
 
       m_ordres.Reinitialiser();
       m_directionPosition = 0;
