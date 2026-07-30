@@ -37,6 +37,7 @@ private:
    CRiskManagement      *m_risk;
    CModuleOrdres        *m_ordres;
    CIndicateurs         *m_indicateurs; // partagee avec IQM et Filtres, plus de handle propre
+   CDebugger            *m_debugger;
 
    string m_symbole;
    double m_multipleATR_SLTP;
@@ -111,7 +112,7 @@ private:
 public:
    CExecution(CIQM *iqm, CFiltres *filtres, CFichierCalibration *calibration,
               CLogger *logger, CRiskManagement *risk, CModuleOrdres *ordres,
-              CIndicateurs *indicateurs, string symbole = "GOLD", double multipleATR_SLTP = 1.0,
+              CIndicateurs *indicateurs, CDebugger *debugger, string symbole = "GOLD", double multipleATR_SLTP = 1.0,
               double margeSignalIQM = 0.05)
    {
       m_iqm = iqm;
@@ -121,6 +122,7 @@ public:
       m_risk = risk;
       m_ordres = ordres;
       m_indicateurs = indicateurs;
+      m_debugger = debugger;
       m_symbole = symbole;
       m_multipleATR_SLTP = multipleATR_SLTP;
       m_margeSignalIQM = margeSignalIQM;
@@ -155,6 +157,7 @@ public:
       if(tBougieCourante != m_derniereBougieM1)
       {
          m_derniereBougieM1 = tBougieCourante;
+         if (m_debugger != NULL) m_debugger.Trace("Coordonner", "Nouvelle bougie M1 détectée à " + TimeToString(tBougieCourante, TIME_DATE|TIME_MINUTES));
          if(etat == ETAT_IDLE)
          {
             ArbitrerSignaux();
@@ -170,9 +173,14 @@ public:
       //    Le seuil est une marge INTERPRETABLE au-dessus de la proba de base
       //    (m_margeSignalIQM), pas un seuil sur le score brut.
       int direction = m_iqm.SignalDirectionnel(m_margeSignalIQM);
-      if(direction == 0) return; // etat inconnu ou trop proche du hasard
+      if(direction == 0)
+      {
+         // if(m_debugger != NULL) m_debugger.Trace("ArbitrerSignaux", "Aucun signal directionnel (IQM neutre)");
+         return; // etat inconnu ou trop proche du hasard
+      }
 
       double scoreIQM = m_iqm.CalculerScore(); // conserve pour le sizing et le log
+      if(m_debugger != NULL) m_debugger.Info("ArbitrerSignaux", "Signal directionnel detecte: dir=" + IntegerToString(direction) + " score=" + DoubleToString(scoreIQM, 4));
 
       //--- CORRECTION : les 4 filtres jugent desormais la favorabilite DANS
       //    LE SENS DE "direction" (au-dessus de la base pour un signal
@@ -181,8 +189,11 @@ public:
       //    structurellement tout signal baissier.
       bool signalFiltres = m_filtres.TendanceOK(direction) && m_filtres.MomentumOK(direction) &&
                             m_filtres.VolumeOK(direction) && m_filtres.VolatiliteOK(direction);
-
-      if(!signalFiltres) return; // rien a faire ce tick
+      if(!signalFiltres)
+      {
+         if(m_debugger != NULL) m_debugger.Info("ArbitrerSignaux", "Signal bloque par les filtres");
+         return; // rien a faire ce tick
+      }
 
       int regime, bRSI, bADX, bATR, bOBV;
       m_iqm.ObtenirEtatMarche(regime, bRSI, bADX, bATR, bOBV);
@@ -193,6 +204,7 @@ public:
       SResultatVerification resCircuit = m_risk.AppliquerCircuitBreaker(pertesConsecutives);
       if(!resCircuit.autorise)
       {
+         if(m_debugger != NULL) m_debugger.Info("ArbitrerSignaux", "Signal bloque par Circuit Breaker: " + resCircuit.motif);
          m_logger.EnregistrerSignalRejete(idCalib, TimeCurrent(), regime, bRSI, bADX, bATR, bOBV,
                                            scoreIQM, resCircuit.motif);
          return;
@@ -203,6 +215,7 @@ public:
       SResultatVerification resExposition = m_risk.VerifierExposition(nbPositions, CalculerExpositionPourcent());
       if(!resExposition.autorise)
       {
+         if(m_debugger != NULL) m_debugger.Info("ArbitrerSignaux", "Signal bloque par Exposition: " + resExposition.motif);
          m_logger.EnregistrerSignalRejete(idCalib, TimeCurrent(), regime, bRSI, bADX, bATR, bOBV,
                                            scoreIQM, resExposition.motif);
          return;
@@ -213,6 +226,7 @@ public:
       SResultatVerification resDrawdown = m_risk.VerifierDrawdownJournalier(CalculerDrawdownJournalier());
       if(!resDrawdown.autorise)
       {
+         if(m_debugger != NULL) m_debugger.Info("ArbitrerSignaux", "Signal bloque par Drawdown: " + resDrawdown.motif);
          m_logger.EnregistrerSignalRejete(idCalib, TimeCurrent(), regime, bRSI, bADX, bATR, bOBV,
                                            scoreIQM, resDrawdown.motif);
          return;

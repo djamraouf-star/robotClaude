@@ -18,6 +18,7 @@
 #include <ScalpOr/CLogger.mqh>
 #include <ScalpOr/CRiskManagement.mqh>
 #include <ScalpOr/CModuleOrdres.mqh>
+#include <ScalpOr/CDebugger.mqh>
 #include <ScalpOr/CExecution.mqh>
 
 //--- Parametres d'entree
@@ -33,6 +34,7 @@ input double RisqueParTradePourcent = 1.0;
 input double DrawdownJournalierMax  = 5.0;
 input int    HeureDebutFenetreCalme = 22; // heure serveur, cf. decision rollover
 input int    HeureFinFenetreCalme   = 23;
+input bool   ActiverDebugger        = true; // activation des traces de debug
 
 //--- Instances (creees dans OnInit, liberees dans OnDeinit)
 CFichierCalibration *g_calibration;
@@ -42,6 +44,7 @@ CFiltres            *g_filtres;
 CLogger             *g_logger;
 CRiskManagement     *g_risk;
 CModuleOrdres       *g_ordres;
+CDebugger           *g_debugger;
 CExecution          *g_execution;
 
 //+------------------------------------------------------------------+
@@ -70,8 +73,11 @@ int OnInit()
                                  RisqueParTradePourcent, DrawdownJournalierMax, SymboleCible);
    g_ordres = new CModuleOrdres(SymboleCible, PasTrailingATR);
 
+   ENUM_DEBUG_LEVEL dbgLevel = ActiverDebugger ? DEBUG_LEVEL_TRACE : DEBUG_LEVEL_NONE;
+   g_debugger = new CDebugger("ScalpOr", "debug_trace.log", dbgLevel);
+
    g_execution = new CExecution(g_iqm, g_filtres, g_calibration, g_logger, g_risk, g_ordres,
-                                 g_indicateurs, SymboleCible, MultipleATR_SLTP, MargeSignalIQM);
+                                 g_indicateurs, g_debugger, SymboleCible, MultipleATR_SLTP, MargeSignalIQM);
 
    //--- Verification de la calibration toutes les heures (cf. decision :
    //    le timer peut tourner souvent, seule la BASCULE est restreinte
@@ -90,6 +96,7 @@ void OnDeinit(const int reason)
    if(g_indicateurs != NULL) g_indicateurs.Liberer();
 
    delete g_execution;
+   delete g_debugger;
    delete g_ordres;
    delete g_risk;
    delete g_logger;
