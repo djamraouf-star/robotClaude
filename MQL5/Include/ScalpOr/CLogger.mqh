@@ -144,6 +144,7 @@ public:
    //--- Compte les pertes consecutives (en memoire)
    int CompterPertesConsecutives()
    {
+      VerifierJour(TimeCurrent());
       return m_pertesConsecutives;
    }
 
