@@ -32,6 +32,47 @@ private:
       }
    }
 
+   void RestaurerEtatInitial()
+   {
+      int handle = FileOpen(CheminTrades(), FILE_READ | FILE_CSV | FILE_ANSI, ';');
+      if(handle == INVALID_HANDLE) return; // pas encore de trade enregistre ou erreur
+
+      // En-tete (10 champs)
+      for(int c = 0; c < 10 && !FileIsEnding(handle); c++) FileReadString(handle);
+
+      MqlDateTime dt;
+      TimeToStruct(TimeCurrent(), dt);
+      dt.hour = 0; dt.min = 0; dt.sec = 0;
+      datetime debutJournee = StructToTime(dt);
+
+      while(!FileIsEnding(handle))
+      {
+         FileReadString(handle); // idCalibration
+         FileReadString(handle); // tOuverture
+         string tClotureStr = FileReadString(handle);
+         double resultatMonetaire = StringToDouble(FileReadString(handle));
+         FileReadString(handle); // resultatR
+         FileReadString(handle); // regime
+         FileReadString(handle); // bucketRSI
+         FileReadString(handle); // bucketADX
+         FileReadString(handle); // bucketATR
+         FileReadString(handle); // bucketOBV
+
+         if(FileIsEnding(handle) && tClotureStr == "") break; // ligne vide finale
+
+         datetime tCloture = StringToTime(tClotureStr);
+         if(tCloture >= debutJournee)
+         {
+            m_pnlJournalier += resultatMonetaire;
+            if(resultatMonetaire < 0.0) m_pertesConsecutives++;
+            else m_pertesConsecutives = 0;
+         }
+      }
+
+      FileClose(handle);
+      Print("CLogger : Restauration terminee. P&L Jour: ", m_pnlJournalier, " Pertes consecutives: ", m_pertesConsecutives);
+   }
+
 public:
    CLogger(string dossier = "ScalpOr") 
    { 
@@ -42,6 +83,8 @@ public:
       MqlDateTime dt;
       TimeToStruct(TimeCurrent(), dt);
       m_jourCourant = dt.day_of_year;
+
+      RestaurerEtatInitial();
    }
 
    //--- Enregistre une position clôturée. idCalibration identifie la
