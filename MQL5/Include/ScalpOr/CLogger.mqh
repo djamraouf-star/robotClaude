@@ -34,7 +34,7 @@ private:
 
    void RestaurerEtatInitial()
    {
-      int handle = FileOpen(CheminTrades(), FILE_READ | FILE_CSV | FILE_ANSI, ';');
+      int handle = FileOpen(CheminTrades(), FILE_READ | FILE_CSV | FILE_ANSI | FILE_COMMON, ';');
       if(handle == INVALID_HANDLE) return; // pas encore de trade enregistre ou erreur
 
       // En-tete (10 champs)
@@ -102,7 +102,7 @@ public:
       else m_pertesConsecutives = 0;
 
       bool existeDeja = FileIsExist(CheminTrades());
-      int handle = FileOpen(CheminTrades(), FILE_READ | FILE_WRITE | FILE_CSV | FILE_ANSI, ';');
+      int handle = FileOpen(CheminTrades(), FILE_READ | FILE_WRITE | FILE_CSV | FILE_ANSI | FILE_COMMON, ';');
       if(handle == INVALID_HANDLE) { Print("CLogger : impossible d'ouvrir ", CheminTrades()); return; }
 
       FileSeek(handle, 0, SEEK_END);
@@ -126,7 +126,7 @@ public:
                                  double scoreIQM, string motifRejet)
    {
       bool existeDeja = FileIsExist(CheminRejets());
-      int handle = FileOpen(CheminRejets(), FILE_READ | FILE_WRITE | FILE_CSV | FILE_ANSI, ';');
+      int handle = FileOpen(CheminRejets(), FILE_READ | FILE_WRITE | FILE_CSV | FILE_ANSI | FILE_COMMON, ';');
       if(handle == INVALID_HANDLE) { Print("CLogger : impossible d'ouvrir ", CheminRejets()); return; }
 
       FileSeek(handle, 0, SEEK_END);

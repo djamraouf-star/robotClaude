@@ -33,7 +33,7 @@ public:
       
       if(m_level > DEBUG_LEVEL_NONE)
       {
-         m_fileHandle = FileOpen(CheminLog(), FILE_WRITE | FILE_TXT | FILE_ANSI);
+         m_fileHandle = FileOpen(CheminLog(), FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
          if(m_fileHandle != INVALID_HANDLE)
          {
             FileWrite(m_fileHandle, "=== INITIALISATION DEBUGGER: ", TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS), " ===");
