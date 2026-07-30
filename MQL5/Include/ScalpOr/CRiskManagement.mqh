@@ -154,6 +154,17 @@ public:
 
       double lot = risqueAjuste / perteParLot;
 
+      // Plafond de marge : le sizing base sur le risque (SL) peut demander un
+      // volume dont la marge requise depasse ce que le levier du compte permet
+      // -- notamment sur GOLD avec un SL serre. On borne au plus petit des deux.
+      double margeParLot = 0.0;
+      if(OrderCalcMargin(ORDER_TYPE_BUY, m_symbole, 1.0, currentPrice, margeParLot) && margeParLot > 0.0)
+      {
+         double margeDisponible = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+         double lotMaxMarge = margeDisponible / margeParLot;
+         lot = MathMin(lot, lotMaxMarge);
+      }
+
       return NormaliserVolume(lot);
    }
 

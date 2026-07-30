@@ -13,8 +13,8 @@
 
 //--- Parametres ajustables (calibration de la methodologie, pas de la strategie)
 input string   SymboleCible            = "GOLD";       // Symbole a analyser
-input datetime DateDebut               = D'2026.06.01';
-input datetime DateFin                 = D'2026.06.30';
+input datetime DateDebut               = D'2026.04.01';
+input datetime DateFin                 = D'2026.04.30';
 input double   MultipleATR_MouvementFav = 1.0;          // Cf. decision : ajustable via backtest
 input int      PlafondBarresGardeFou    = 80;            // Fixe, non ajustable (garde-fou)
 input int      SeuilMinEchantillon      = 40;            // 30-50, valeur de depart

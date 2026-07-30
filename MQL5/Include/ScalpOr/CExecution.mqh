@@ -275,6 +275,7 @@ public:
 // >>> AJOUT DIAGNOSTIC
       Print("ENTREE ", TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
             " dir=", direction,
+            " regime=", regime,
             " prix=", DoubleToString(prixActuel, _Digits),
             " RSI=", DoubleToString(m_indicateurs.RSI(1), 2),
             " ADX=", DoubleToString(m_indicateurs.ADX(1), 2),
